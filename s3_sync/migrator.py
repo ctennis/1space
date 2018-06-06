@@ -250,7 +250,10 @@ class Migrator(object):
         self.status = status
         self.work_chunk = work_chunk
         self.max_conns = swift_pool.max_size
-        self.object_queue = eventlet.queue.Queue(self.max_conns * 2)
+        self.verify_queue = eventlet.queue.Queue(work_chunk)
+        self.primary_queue = eventlet.queue.Queue(self.max_conns * 2)
+        self.object_queue = self.primary_queue
+        self.is_verifying = False
         self.container_queue = eventlet.queue.Queue()
         self.ic_pool = swift_pool
         self.errors = eventlet.queue.Queue()
@@ -264,7 +267,8 @@ class Migrator(object):
         if self.config['aws_bucket'] != '/*':
             self.provider = create_provider(
                 self.config, self.max_conns, False)
-            self._next_pass()
+            self._next_pass(False)
+            self._next_pass(True)
             return [dict(self.config)]
 
         self.config['all_buckets'] = True
@@ -320,7 +324,8 @@ class Migrator(object):
                 self.config['container'] = remote_container
                 self.provider.aws_bucket = remote_container
                 handled_containers.append(dict(self.config))
-                self._next_pass()
+                self._next_pass(False)
+                self._next_pass(True)
             if local_container and local_container['name'] == remote_container:
                 local_container = next(local_iterator)
 
@@ -353,7 +358,12 @@ class Migrator(object):
                         'Updated account metadata for %s: %s' %
                         (self.config['account'], header_changes.keys()))
 
-    def _next_pass(self):
+    def _next_pass(self, is_verify):
+        self.is_verify = is_verify
+        if is_verify:
+            self.object_queue = self.verify_queue
+        else:
+            self.object_queue = self.primary_queue
         self._process_account_metadata()
         worker_pool = eventlet.GreenPool(self.workers)
         for _ in xrange(self.workers):
@@ -363,21 +373,24 @@ class Migrator(object):
         scanned = 0
         copied = 0
         marker = self.status.get_migration(self.config).get('marker', '')
-        try:
-            marker, scanned, copied = self._process_container(marker=marker)
-            if scanned == 0:
-                is_reset = True
-                if marker:
+        if not self.is_verify:
+            try:
+                marker, scanned, copied = self._process_container(
+                    marker=marker)
+                if scanned == 0:
+                    is_reset = True
                     marker, scanned, copied = self._process_container(
                         marker='')
-        except ContainerNotFound as e:
-            self.logger.error(unicode(e))
-        except Exception:
-            # We must catch any errors to make sure we stop our workers. This
-            # might be better with a context manager.
-            self.logger.error('Failed to migrate "%s"' %
-                              self.config['aws_bucket'])
-            self.logger.error(''.join(traceback.format_exc()))
+            except ContainerNotFound as e:
+                self.logger.error(unicode(e))
+            except Exception:
+                # We must catch any errors to make sure we stop our workers.
+                # This might be better with a context manager.
+                scanned = 0
+                self.logger.error('Failed to migrate "%s"' %
+                                  self.config['aws_bucket'])
+                self.logger.error(''.join(traceback.format_exc()))
+
         self.object_queue.join()
 
         while not self.container_queue.empty():
@@ -413,6 +426,9 @@ class Migrator(object):
         self._stop_workers(self.object_queue)
 
         self.check_errors()
+        if self.is_verify:
+            return
+
         copied -= self.errors.qsize()
         # TODO: record the number of errors, as well
         self.status.save_migration(
@@ -770,6 +786,13 @@ class Migrator(object):
             remote['last_modified'], SWIFT_TIME_FMT)
         return remote_time < now - older_than
 
+    def is_primary(self, container, obj):
+        _, nodes = self.container_ring.get_nodes(
+            self.config['account'].encode('utf8'), container.encode('utf8'),
+            obj.encode('utf8'))
+        return is_local_device(
+            self.myips, None, nodes[0]['ip'], nodes[0]['port'])
+
     def _find_missing_objects(
             self, container, aws_bucket, marker, prefix, list_all):
 
@@ -795,7 +818,13 @@ class Migrator(object):
                 if self._old_enough(remote):
                     work = MigrateObjectWork(aws_bucket, container,
                                              remote['name'])
-                    self.object_queue.put(work)
+                    if list_all:
+                        # put on the current queue
+                        self.object_queue.put(work)
+                    elif self.is_primary(container, remote['name']):
+                        self.primary_queue.put(work)
+                    else:
+                        self.verify_queue.put(work)
                     copied += 1
                 scanned += 1
                 remote = next(source_iter)
@@ -817,7 +846,12 @@ class Migrator(object):
                     if cmp_ret < 0 and self._old_enough(remote):
                         work = MigrateObjectWork(aws_bucket, container,
                                                  remote['name'])
-                        self.object_queue.put(work)
+                        if list_all:
+                            self.object_queue.put(work)
+                        elif self.is_primary(container, remote['name']):
+                            self.primary_queue.put(work)
+                        else:
+                            self.verify_queue.put(work)
                         copied += 1
                 remote = next(source_iter)
                 local = next(local_iter)
