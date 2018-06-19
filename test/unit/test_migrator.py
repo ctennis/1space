@@ -2079,9 +2079,9 @@ class TestMain(unittest.TestCase):
                     'run',
                     new_callable=lambda: mock.Mock(side_effect=old_run))\
                 as mock_run:
-            fake_c_ring = mock.Mock()
-            mock_ring.return_value = fake_c_ring
-            fake_c_ring.get_nodes.return_value = ('foo', [
+            fake_container_ring = mock.Mock()
+            mock_ring.return_value = fake_container_ring
+            fake_container_ring.get_nodes.return_value = ('foo', [
                 {'ip': 'a.b.c', 'port': 6100},
                 {'ip': 'b.c.a', 'port': 6100},
                 {'ip': 'b.c.d', 'port': 6100}])
