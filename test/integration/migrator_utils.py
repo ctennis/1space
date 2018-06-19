@@ -2,6 +2,7 @@ import json
 import logging
 import s3_sync.daemon_utils
 import s3_sync.migrator
+from functools import partial
 from swift.common.ring import Ring
 from swift.common.utils import whataremyips
 
@@ -42,7 +43,9 @@ class MigratorFactory(object):
     def get_migrator(self, migration, status):
         ic_pool = s3_sync.migrator.create_ic_pool(
             self.config, self.SWIFT_DIR, self.migrator_config['workers'] + 1)
+        is_local_cont = partial(s3_sync.migrator.is_local_container, MYIPS,
+                                CONTAINER_RING)
         return s3_sync.migrator.Migrator(
             migration, status, self.migrator_config['items_chunk'],
-            self.migrator_config['workers'], ic_pool, self.logger, MYIPS,
-            CONTAINER_RING)
+            self.migrator_config['workers'], ic_pool, self.logger,
+            is_local_cont)

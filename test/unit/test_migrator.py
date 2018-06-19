@@ -490,11 +490,9 @@ class TestMigratorUtils(unittest.TestCase):
         with open(self.status_file_path) as rf:
             self.assertEqual(json.load(rf), existing_status)
 
-    @mock.patch('s3_sync.migrator.is_local_container')
     @mock.patch('s3_sync.migrator.time')
-    def test_status_prune_saved(self, time_mock, is_local):
+    def test_status_prune_saved(self, time_mock):
         time_mock.time.return_value = 10000
-        is_local.return_value = True
         self.setup_status_file_path()
         config = {
             "account": "AUTH_dev",
@@ -521,8 +519,10 @@ class TestMigratorUtils(unittest.TestCase):
             json.dump(status_list, wf)
         status = s3_sync.migrator.Status(self.status_file_path)
         status.load_status_list()
+        is_local_cont = mock.Mock()
+        is_local_cont.return_value = True
         migrator = s3_sync.migrator.Migrator(
-            config, status, 10, 5, mock.Mock(max_size=1), None, 0, 1)
+            config, status, 10, 5, mock.Mock(max_size=1), None, is_local_cont)
         self.assertIn('custom_prefix', migrator.config)
         self.assertEqual('', migrator.config['custom_prefix'])
         status.save_migration(migrator.config, 'new-marker', 10, 100, False)
@@ -643,12 +643,14 @@ class TestMigrator(unittest.TestCase):
             return is_per
 
         is_primary = make_one_per([-1, 3])
-        s3_sync.migrator.is_local_container = mock.Mock()
-        s3_sync.migrator.is_local_container.return_value = True
-        s3_sync.migrator.Migrator.is_primary = mock.Mock()
-        s3_sync.migrator.Migrator.is_primary.side_effect = is_primary
+
+        def is_local_cont(primary, account, container, obj=None):
+            if primary:
+                return is_primary()
+            return True
+
         self.migrator = s3_sync.migrator.Migrator(
-            config, None, 1000, 5, pool, self.logger, 0, 1)
+            config, None, 1000, 5, pool, self.logger, is_local_cont)
         self.migrator.status = mock.Mock()
 
     def get_log_lines(self):
@@ -2001,8 +2003,7 @@ class TestMain(unittest.TestCase):
             'logger': self.logger,
             'items_chunk': None,
             'workers': 5,
-            'myips': ['127.0.0.1'],
-            'container_ring': mock.Mock(),
+            'is_local_cont': mock.Mock(),
             'poll_interval': 30,
             'once': True,
         }
@@ -2093,10 +2094,10 @@ class TestMain(unittest.TestCase):
             mock_status.assert_called_once_with('/test/status')
             mock_migrator.assert_called_once_with(
                 config['migrations'][0], mock_status.return_value, 42, 1337,
-                mock.ANY, mock.ANY, mock.ANY, mock.ANY)
+                mock.ANY, mock.ANY, mock.ANY)
             mock_run.assert_called_once_with(
                 config['migrations'], mock_status.return_value, mock.ANY,
-                mock.ANY, 42, 1337, 60, True, mock.ANY, fake_c_ring)
+                mock.ANY, 42, 1337, 60, True, mock.ANY)
 
     @mock.patch('s3_sync.migrator.create_provider')
     def test_migrate_all_containers_error(self, create_provider_mock):
@@ -2129,5 +2130,5 @@ class TestMain(unittest.TestCase):
 
         s3_sync.migrator.run(
             migrations, status, mock.Mock(max_size=10), logging.getLogger(),
-            1000, 10, 0, 1, 10, True)
+            1000, 10, 10, True, mock.Mock(return_value=True))
         self.assertEqual(old_list, status.status_list)
