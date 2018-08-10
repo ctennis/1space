@@ -17,6 +17,7 @@ limitations under the License.
 import argparse
 from cStringIO import StringIO
 import hashlib
+import sys
 import urlparse
 
 import botocore.exceptions
@@ -91,7 +92,9 @@ def main(args=None):
     parser.add_argument('--protocol', required=True, choices=('s3', 'swift'))
     parser.add_argument('--endpoint', required=True)
     parser.add_argument('--username', required=True)
-    parser.add_argument('--password', required=True)
+    parser.add_argument('--password', type=argparse.FileType('r'),
+                        help='filename containing password instead of STDIN',
+                        default=sys.stdin)
     parser.add_argument('--account')
     parser.add_argument('--bucket')
     parser.add_argument('--prefix')
@@ -111,7 +114,7 @@ def main(args=None):
         'container': u'testing-\U0001f44d',
         'aws_endpoint': args.endpoint,
         'aws_identity': args.username.decode('utf8'),
-        'aws_secret': args.password.decode('utf8'),
+        'aws_secret': args.password.read().strip().decode('utf8'),
         'remote_account':
         args.account.decode('utf8') if args.account else args.account,
         'aws_bucket': args.bucket.decode('utf8') if args.bucket

@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 from io import BytesIO
+from StringIO import StringIO
 import mock
 import sys
 import unittest
@@ -24,13 +25,19 @@ from s3_sync.verify import main
 
 @mock.patch('s3_sync.verify.validate_bucket', return_value=object())
 class TestMainTrackProvider(unittest.TestCase):
+    def setUp(self):
+        self.stdin = sys.stdin
+        sys.stdin = StringIO('secret key')
+
+    def tearDown(self):
+        sys.stdin = self.stdin
+
     def test_account_requires_swift(self, mock_validate):
         msg = 'Invalid argument: account is only valid with swift protocol'
         self.assertEqual(msg, main([
             '--protocol', 's3',
             '--endpoint', 'https://s3.amazonaws.com',
             '--username', 'access id',
-            '--password', 'secret key',
             '--account', 'AUTH_account',
             '--bucket', 'some-bucket',
         ]))
@@ -42,7 +49,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 's3',
             '--endpoint', 'https://s3.amazonaws.com',
             '--username', 'access id',
-            '--password', 'secret key',
             '--bucket', 'some/bucket',
         ]))
         self.assertEqual(mock_validate.mock_calls, [])
@@ -68,35 +74,25 @@ class TestMainTrackProvider(unittest.TestCase):
         do_test([
             '--endpoint', 'https://s3.amazonaws.com',
             '--username', 'access id',
-            '--password', 'secret key',
         ], '--protocol')
         do_test([
             '--protocol', 's3',
             '--username', 'access id',
-            '--password', 'secret key',
         ], '--endpoint')
         do_test([
             '--protocol', 's3',
             '--endpoint', 'https://s3.amazonaws.com',
-            '--password', 'secret key',
         ], '--username')
-        do_test([
-            '--protocol', 's3',
-            '--endpoint', 'https://s3.amazonaws.com',
-            '--username', 'access id',
-        ], '--password')
         do_test([
             '--protocol', 'swift',
             '--endpoint', 'http://1space-keystone:5000/v3',
             '--username', 'access id',
-            '--password', 'secret key',
             "--auth-type", "keystone_v2",
         ], "--tenant-name")
         do_test([
             '--protocol', 'swift',
             '--endpoint', 'http://1space-keystone:5000/v3',
             '--username', 'access id',
-            '--password', 'secret key',
             "--auth-type", "keystone_v3",
             "--project-name", "test",
             "--user-domain-name", "default",
@@ -105,7 +101,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 'swift',
             '--endpoint', 'http://1space-keystone:5000/v3',
             '--username', 'access id',
-            '--password', 'secret key',
             "--auth-type", "keystone_v3",
             "--project-name", "test",
             "--project-domain-name", "default",
@@ -114,7 +109,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 'swift',
             '--endpoint', 'http://1space-keystone:5000/v3',
             '--username', 'access id',
-            '--password', 'secret key',
             "--auth-type", "keystone_v3",
             "--user-domain-name", "default",
             "--project-domain-name", "default",
@@ -125,7 +119,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 's3',
             '--endpoint', 'https://s3.amazonaws.com',
             '--username', 'access id',
-            '--password', 'secret key',
             "--auth-type", "keystone_v3",
             "--project-name", "test",
             "--user-domain-name", "default",
@@ -137,7 +130,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 's3',
             '--endpoint', 'https://s3.amazonaws.com',
             '--username', 'access id',
-            '--password', 'secret key',
             "--auth-type", "keystone_v2",
             "--tenant-name", "test",
         ])
@@ -149,7 +141,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 'swift',
             '--endpoint', 'http://1space-keystone:5000/v3',
             '--username', 'access id',
-            '--password', 'secret key',
             "--auth-type", "flimflam",
         ])
         self.assertIn('invalid choice: ', got)
@@ -160,7 +151,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 's3',
             '--endpoint', 'https://s3.amazonaws.com',
             '--username', 'access id',
-            '--password', 'secret key',
             '--bucket', 'some-bucket',
         ])
         self.assertIs(exit_arg, mock_validate.return_value)
@@ -186,7 +176,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 's3',
             '--endpoint', 'https://s3.amazonaws.com',
             '--username', 'access id',
-            '--password', 'secret key',
             '--bucket', 'some-bucket',
             '--prefix', 'jojo/hoho/',
         ])
@@ -211,7 +200,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 's3',
             '--endpoint', 'https://storage.googleapis.com',
             '--username', 'access id',
-            '--password', 'secret key',
             '--bucket', 'some-bucket',
         ])
         self.assertIs(exit_arg, mock_validate.return_value)
@@ -235,7 +223,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 'swift',
             '--endpoint', 'https://saio:8080/auth/v1.0',
             '--username', 'access id',
-            '--password', 'secret key',
             '--bucket', 'some-bucket',
         ])
         self.assertIs(exit_arg, mock_validate.return_value)
@@ -259,7 +246,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 'swift',
             '--endpoint', 'https://saio:8080/auth/v1.0',
             '--username', 'access id',
-            '--password', 'secret key',
             '--bucket', '/*',
         ])
         self.assertIs(exit_arg, mock_validate.return_value)
@@ -283,7 +269,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 'swift',
             '--endpoint', 'http://1space-keystone:5000/v3',
             '--username', 'access id',
-            '--password', 'secret key',
             "--auth-type", "keystone_v2",
             "--tenant-name", "flipper-flapp",
             '--bucket', '/*',
@@ -312,7 +297,6 @@ class TestMainTrackProvider(unittest.TestCase):
             '--protocol', 'swift',
             '--endpoint', 'http://1space-keystone:5000/v3',
             '--username', 'access id',
-            '--password', 'secret key',
             "--auth-type", "keystone_v3",
             "--project-name", "test",
             "--project-domain-name", "wat-wat",
@@ -343,6 +327,13 @@ class TestMainTrackProvider(unittest.TestCase):
 
 @mock.patch('s3_sync.base_sync.BaseSync.HttpClientPool.get_client')
 class TestMainTrackClientCalls(unittest.TestCase):
+    def setUp(self):
+        self.stdin = sys.stdin
+        sys.stdin = StringIO('secret key')
+
+    def tearDown(self):
+        sys.stdin = self.stdin
+
     def assert_calls(self, mock_obj, calls):
         actual_calls = iter(mock_obj.mock_calls)
         for i, expected in enumerate(calls):
@@ -358,7 +349,6 @@ class TestMainTrackClientCalls(unittest.TestCase):
             '--protocol', 's3',
             '--endpoint', 'https://s3.amazonaws.com',
             '--username', 'access id',
-            '--password', 'secret key',
         ])
         self.assertEqual(exit_arg, 0)
         mock_client = \
@@ -399,7 +389,6 @@ class TestMainTrackClientCalls(unittest.TestCase):
             '--protocol', 's3',
             '--endpoint', 'https://s3.amazonaws.com',
             '--username', 'access id',
-            '--password', 'secret key',
             '--bucket', 'some-bucket',
         ])
         self.assertEqual(exit_arg, 0)
@@ -468,7 +457,6 @@ class TestMainTrackClientCalls(unittest.TestCase):
             '--protocol', 's3',
             '--endpoint', 'https://s3.amazonaws.com',
             '--username', 'access id',
-            '--password', 'secret key',
             '--bucket', 'some-bucket',
             '--prefix', 'heehee/hawhaw/',
         ])
@@ -511,7 +499,6 @@ class TestMainTrackClientCalls(unittest.TestCase):
             '--protocol', 's3',
             '--endpoint', 'https://storage.googleapis.com',
             '--username', 'access id',
-            '--password', 'secret key',
         ])
         self.assertEqual(exit_arg, 0)
         mock_client = \
@@ -548,7 +535,6 @@ class TestMainTrackClientCalls(unittest.TestCase):
             '--protocol', 's3',
             '--endpoint', 'https://storage.googleapis.com',
             '--username', 'access id',
-            '--password', 'secret key',
             '--bucket', 'some-bucket',
         ])
         self.assertEqual(exit_arg, 0)
@@ -588,7 +574,6 @@ class TestMainTrackClientCalls(unittest.TestCase):
             '--protocol', 'swift',
             '--endpoint', 'https://saio:8080/auth/v1.0',
             '--username', 'access id',
-            '--password', 'secret key',
         ])
         self.assertEqual(exit_arg, 0)
         mock_client = \
@@ -612,7 +597,6 @@ class TestMainTrackClientCalls(unittest.TestCase):
             '--protocol', 'swift',
             '--endpoint', 'https://saio:8080/auth/v1.0',
             '--username', 'access id',
-            '--password', 'secret key',
             '--bucket', 'some-bucket',
         ])
         self.assertEqual(exit_arg, 0)
@@ -653,7 +637,6 @@ class TestMainTrackClientCalls(unittest.TestCase):
             '--protocol', 'swift',
             '--endpoint', 'https://saio:8080/auth/v1.0',
             '--username', 'access id',
-            '--password', 'secret key',
             '--bucket', 'some-bucket',
             '--prefix', 'floo/gloo/',
         ])
